@@ -1,0 +1,1128 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>WebGIS — Analisis Kerawanan Tanah Longsor | Kabupaten Bogor</title>
+
+  <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Poppins:ital,wght@0,300;0,400;0,500;0,600;0,700;0,800;1,400&display=swap" rel="stylesheet" />
+
+  <style>
+    /* ══════════════════════════════════════════════
+       TOKENS — LIGHT MODE PROFESIONAL
+    ══════════════════════════════════════════════ */
+    :root {
+      /* Panel kiri — light mode */
+      --bg:         #F8F9FA;
+      --surface:    #FFFFFF;
+      --surface2:   #F1F3F5;
+      --border:     #E2E8F0;
+      --border2:    #CBD5E1;
+      --text:       #1E293B;
+      --muted:      #64748B;
+
+      /* Aksen utama: merah crimson (kesan bahaya/bencana) */
+      --accent:     #C0392B;
+      --accent2:    #2563EB;
+
+      /* Warna kelas kerawanan */
+      --c-low:      #16A34A;
+      --c-med:      #D97706;
+      --c-high:     #DC2626;
+
+      /* Danger & warn untuk statistik */
+      --danger:     #DC2626;
+      --warn:       #D97706;
+
+      --font-head:  'Poppins', sans-serif;
+      --font-body:  'Poppins', sans-serif;
+
+      --story-w:    42%;
+      --map-w:      58%;
+      --radius:     12px;
+    }
+
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    html { scroll-behavior: smooth; }
+
+    body {
+      font-family: var(--font-body);
+      background: var(--bg);
+      color: var(--text);
+      font-size: 14px;
+      overflow-x: hidden;
+    }
+
+    /* ══════════════════════════════════════════════
+       LAYOUT — SCROLLYTELLING SPLIT
+    ══════════════════════════════════════════════ */
+    #root {
+      display: flex;
+      height: 100vh;
+      overflow: hidden;
+    }
+
+    /* ── STORY PANEL (LEFT, SCROLLABLE) ── */
+    #story {
+      width: var(--story-w);
+      height: 100vh;
+      overflow-y: auto;
+      flex-shrink: 0;
+      background: var(--bg);
+      z-index: 10;
+      scrollbar-width: thin;
+      scrollbar-color: var(--border2) transparent;
+    }
+    #story::-webkit-scrollbar { width: 4px; }
+    #story::-webkit-scrollbar-thumb { background: var(--border2); border-radius: 4px; }
+
+    /* ── MAP PANEL (RIGHT, STICKY) ── */
+    #map-side {
+      width: var(--map-w);
+      height: 100vh;
+      position: sticky;
+      top: 0;
+      flex-shrink: 0;
+      display: flex;
+      flex-direction: column;
+    }
+
+    #map { flex: 1; }
+
+    /* ══════════════════════════════════════════════
+       STORY SECTIONS
+    ══════════════════════════════════════════════ */
+
+    /* ── HERO ── */
+    #sec-hero {
+      min-height: 100vh;
+      display: flex;
+      flex-direction: column;
+      justify-content: flex-end;
+      padding: 0 0 56px;
+      position: relative;
+      overflow: hidden;
+    }
+
+    .hero-bg {
+      position: absolute; inset: 0; z-index: 0;
+      background: 
+        radial-gradient(ellipse 80% 60% at 30% 20%, rgba(192,57,43,.07) 0%, transparent 65%),
+        radial-gradient(ellipse 60% 70% at 75% 85%, rgba(37,99,235,.05) 0%, transparent 65%),
+        var(--bg);
+    }
+
+    .hero-noise {
+      position: absolute; inset: 0; z-index: 1;
+      background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 256 256' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='noise'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='4' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23noise)' opacity='0.04'/%3E%3C/svg%3E");
+      opacity: 0.6;
+      pointer-events: none;
+    }
+
+    .hero-inner { position: relative; z-index: 2; padding: 0 44px; }
+
+    .hero-badge {
+      display: inline-flex; align-items: center; gap: 7px;
+      border: 1px solid rgba(192,57,43,.25);
+      background: rgba(192,57,43,.06);
+      border-radius: 20px;
+      padding: 5px 14px;
+      font-size: 11px; font-weight: 600;
+      letter-spacing: .09em; text-transform: uppercase;
+      color: var(--accent); margin-bottom: 24px;
+    }
+    .hero-badge::before {
+      content: '';
+      width: 6px; height: 6px; border-radius: 50%;
+      background: var(--accent);
+      box-shadow: 0 0 8px rgba(192,57,43,.5);
+      animation: pulse 2s infinite;
+    }
+    @keyframes pulse {
+      0%, 100% { opacity: 1; transform: scale(1); }
+      50% { opacity: .5; transform: scale(1.4); }
+    }
+
+    .hero-title {
+      font-family: var(--font-head);
+      font-size: clamp(28px, 3vw, 44px);
+      font-weight: 800;
+      line-height: 1.15;
+      letter-spacing: -.02em;
+      color: var(--text);
+      margin-bottom: 16px;
+    }
+    .hero-title .hl {
+      background: linear-gradient(120deg, #C0392B 0%, #9B1C1C 100%);
+      -webkit-background-clip: text;
+      -webkit-text-fill-color: transparent;
+      background-clip: text;
+    }
+
+    .hero-sub {
+      color: var(--muted);
+      font-size: 14.5px; line-height: 1.7;
+      max-width: 420px;
+      margin-bottom: 36px;
+      font-weight: 400;
+    }
+
+    .hero-stats {
+      display: grid; grid-template-columns: repeat(3, 1fr);
+      gap: 10px;
+    }
+    .hstat {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      padding: 18px 14px;
+      box-shadow: 0 1px 4px rgba(15,23,42,.06);
+    }
+    .hstat .v {
+      font-family: var(--font-head);
+      font-size: 26px; font-weight: 700;
+      line-height: 1;
+      margin-bottom: 6px;
+    }
+    .hstat .l { font-size: 11px; color: var(--muted); line-height: 1.45; font-weight: 400; }
+
+    /* ── GENERIC SECTION ── */
+    .section {
+      padding: 64px 44px;
+      border-top: 1px solid var(--border);
+    }
+
+    .section-eyebrow {
+      font-size: 10px; font-weight: 700;
+      letter-spacing: .14em; text-transform: uppercase;
+      color: var(--accent);
+      margin-bottom: 10px;
+    }
+
+    .section-title {
+      font-family: var(--font-head);
+      font-size: clamp(20px, 2.2vw, 30px);
+      font-weight: 700;
+      line-height: 1.25;
+      letter-spacing: -.015em;
+      color: var(--text);
+      margin-bottom: 20px;
+    }
+    .section-title em { font-style: italic; color: var(--accent); }
+
+    .section-body {
+      color: var(--muted);
+      line-height: 1.8;
+      font-size: 13.5px;
+      font-weight: 400;
+    }
+    .section-body p { margin-bottom: 14px; }
+    .section-body strong { color: var(--text); font-weight: 600; }
+
+    /* ── CALLOUT CARDS ── */
+    .callout-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin: 20px 0; }
+    .callout {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      padding: 18px 16px;
+      box-shadow: 0 1px 4px rgba(15,23,42,.05);
+    }
+    .callout .c-num {
+      font-family: var(--font-head);
+      font-size: 28px; font-weight: 800;
+      line-height: 1; margin-bottom: 5px;
+    }
+    .callout .c-lbl { font-size: 11.5px; color: var(--muted); line-height: 1.5; font-weight: 400; }
+
+    /* ── STEPPER ── */
+    .stepper { list-style: none; margin: 28px 0; }
+    .stepper li {
+      display: flex; gap: 16px;
+      padding-bottom: 28px;
+      position: relative;
+    }
+    .stepper li:not(:last-child)::after {
+      content: '';
+      position: absolute;
+      left: 17px; top: 36px; bottom: 0;
+      width: 2px;
+      background: linear-gradient(to bottom, var(--border2), transparent);
+    }
+
+    .step-num {
+      width: 36px; height: 36px;
+      border-radius: 50%;
+      background: rgba(192,57,43,.08);
+      border: 2px solid rgba(192,57,43,.3);
+      color: var(--accent);
+      font-family: var(--font-head);
+      font-size: 13px; font-weight: 700;
+      display: flex; align-items: center; justify-content: center;
+      flex-shrink: 0;
+    }
+
+    .step-body h4 {
+      font-family: var(--font-head);
+      font-size: 14px; font-weight: 600;
+      margin-bottom: 5px; color: var(--text);
+    }
+    .step-body p {
+      font-size: 13px; color: var(--muted); line-height: 1.65; font-weight: 400;
+    }
+
+    .formula-box {
+      background: #F8FAFC;
+      border: 1px solid var(--border2);
+      border-left: 3px solid var(--accent2);
+      border-radius: 8px;
+      padding: 14px 16px;
+      margin: 12px 0;
+      font-size: 12.5px; line-height: 1.75;
+      color: var(--text);
+    }
+    .formula-box code {
+      font-family: 'Courier New', monospace;
+      color: var(--accent2);
+      background: rgba(37,99,235,.08);
+      padding: 2px 6px;
+      border-radius: 4px;
+    }
+
+    /* ── PARAM TABLE ── */
+    .param-wrap { overflow-x: auto; margin: 20px 0; }
+
+    table.param-tbl {
+      width: 100%;
+      border-collapse: collapse;
+      font-size: 12.5px;
+    }
+    table.param-tbl th {
+      background: var(--surface2);
+      border-bottom: 1px solid var(--border2);
+      padding: 9px 12px;
+      text-align: left;
+      font-size: 10.5px;
+      font-weight: 700;
+      letter-spacing: .07em;
+      text-transform: uppercase;
+      color: var(--muted);
+      white-space: nowrap;
+    }
+    table.param-tbl td {
+      padding: 9px 12px;
+      border-bottom: 1px solid var(--border);
+      vertical-align: top;
+      line-height: 1.55;
+      color: var(--text);
+    }
+    table.param-tbl tr:last-child td { border-bottom: none; }
+    table.param-tbl tr.total-row td {
+      background: rgba(192,57,43,.04);
+      font-weight: 700;
+      color: var(--accent);
+      border-top: 2px solid var(--border2);
+    }
+
+    .pill {
+      display: inline-block;
+      padding: 2px 9px;
+      border-radius: 20px;
+      font-size: 11px; font-weight: 700;
+      white-space: nowrap;
+    }
+    .pill-h { background: rgba(220,38,38,.10); color: #DC2626; }
+    .pill-m { background: rgba(217,119,6,.10);  color: #D97706; }
+    .pill-l { background: rgba(22,163,74,.10);  color: #16A34A; }
+
+    .score-dots { display: flex; gap: 3px; flex-wrap: wrap; align-items: center; }
+    .score-dot {
+      width: 16px; height: 16px;
+      border-radius: 3px;
+      display: inline-flex; align-items: center; justify-content: center;
+      font-size: 9px; font-weight: 700; color: #fff;
+    }
+
+    /* ── MAP SECTION ── */
+    #sec-map {
+      padding: 40px 44px 0;
+      border-top: 1px solid var(--border);
+    }
+
+    .legend-inline {
+      display: flex; gap: 10px; flex-wrap: wrap;
+      margin: 20px 0 0;
+    }
+    .leg-item {
+      display: flex; align-items: center; gap: 7px;
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 20px;
+      padding: 5px 12px;
+      font-size: 12px; font-weight: 500;
+      color: var(--text);
+    }
+    .leg-dot { width: 10px; height: 10px; border-radius: 50%; flex-shrink: 0; }
+
+    /* ── MAP OVERLAY CONTROLS ── */
+    #map-ui {
+      position: absolute;
+      inset: 0; pointer-events: none;
+      z-index: 600;
+    }
+
+    /* ── LAYER CONTROL — LIGHT THEME ── */
+    #layer-ctrl {
+      position: absolute; top: 14px; right: 14px;
+      pointer-events: all;
+      background: #FFFFFF;
+      backdrop-filter: blur(12px);
+      border: 1px solid #CBD5E1;
+      border-radius: var(--radius);
+      min-width: 248px;
+      overflow: hidden;
+      box-shadow:
+        0 4px 6px -1px rgba(15,23,42,.08),
+        0 10px 28px -4px rgba(15,23,42,.12),
+        0 0 0 1px rgba(255,255,255,.6);
+    }
+
+    .lc-head {
+      display: flex; align-items: center; justify-content: space-between;
+      padding: 10px 14px;
+      cursor: pointer;
+      background: linear-gradient(135deg, rgba(192,57,43,.04) 0%, rgba(255,255,255,0) 100%);
+      border-bottom: 1px solid #E2E8F0;
+    }
+    .lc-head span {
+      font-size: 11.5px; font-weight: 700; letter-spacing: .04em;
+      color: #1E293B;
+    }
+    .lc-chev { font-size: 10px; color: #64748B; transition: transform .25s; }
+    .lc-chev.open { transform: rotate(180deg); }
+
+    #lc-body { padding: 6px 0; }
+
+    .lc-item {
+      display: flex; flex-direction: column;
+      padding: 7px 14px; gap: 5px;
+      transition: background .15s;
+    }
+    .lc-item:hover { background: #F8F9FA; }
+    .lc-top { display: flex; align-items: center; gap: 8px; }
+    .lc-swatch { width: 10px; height: 10px; border-radius: 2px; flex-shrink: 0; }
+    .lc-label {
+      flex: 1; font-size: 12px; cursor: pointer; user-select: none;
+      color: #1E293B; font-weight: 500;
+    }
+    .lc-count { font-size: 10px; color: #94A3B8; font-weight: 400; }
+
+    /* Toggle switch — off: abu abu, on: merah crimson */
+    .tog {
+      width: 28px; height: 15px;
+      border-radius: 8px; background: #CBD5E1;
+      border: none; cursor: pointer;
+      position: relative; transition: background .2s; flex-shrink: 0;
+      box-shadow: inset 0 1px 2px rgba(15,23,42,.1);
+    }
+    .tog.on { background: #C0392B; box-shadow: 0 0 0 2px rgba(192,57,43,.18); }
+    .tog::after {
+      content: ''; position: absolute;
+      top: 2px; left: 2px;
+      width: 11px; height: 11px;
+      border-radius: 50%; background: #fff;
+      transition: transform .2s;
+      box-shadow: 0 1px 3px rgba(15,23,42,.2);
+    }
+    .tog.on::after { transform: translateX(13px); }
+
+    /* Opacity slider */
+    .opa-row {
+      display: flex; align-items: center; gap: 8px;
+      padding-left: 18px;
+    }
+    .opa-row span {
+      font-size: 10px; color: #64748B;
+      width: 30px; text-align: right; font-weight: 500;
+    }
+    .opa-row input[type=range] {
+      flex: 1; accent-color: #C0392B; cursor: pointer;
+      height: 3px;
+    }
+
+    /* Basemap row */
+    #bm-row {
+      border-top: 1px solid #E2E8F0;
+      padding: 8px 14px;
+      display: flex; gap: 5px; align-items: center;
+      background: #F8F9FA;
+    }
+    #bm-row > span { font-size: 10px; color: #64748B; font-weight: 500; }
+    .bm-btn {
+      border: 1px solid #CBD5E1; background: #FFFFFF;
+      color: #64748B; font-family: var(--font-body);
+      font-size: 10.5px; padding: 3px 8px; border-radius: 4px;
+      cursor: pointer; transition: all .18s; font-weight: 500;
+    }
+    .bm-btn:hover { border-color: #C0392B; color: #C0392B; }
+    .bm-btn.active {
+      border-color: #C0392B; color: #C0392B;
+      background: rgba(192,57,43,.07);
+      font-weight: 600;
+    }
+
+    #coord-bar {
+      position: absolute; bottom: 0; left: 0; right: 0;
+      background: rgba(10,12,15,.8);
+      border-top: 1px solid var(--border);
+      padding: 4px 12px;
+      font-size: 10.5px; color: var(--muted);
+      display: flex; gap: 16px; align-items: center;
+      pointer-events: none;
+    }
+
+    #map-popup-hint {
+      position: absolute; bottom: 28px; left: 14px;
+      pointer-events: none;
+      background: rgba(17,20,24,.85);
+      border: 1px solid var(--border2);
+      border-radius: 8px;
+      padding: 8px 12px;
+      font-size: 11.5px; color: var(--muted);
+    }
+
+    #load-bar {
+      position: absolute; top: 0; left: 0; right: 0; height: 2px; z-index: 700;
+      background: linear-gradient(90deg, var(--accent), var(--accent2));
+      transform-origin: left; transform: scaleX(0);
+      opacity: 0; transition: opacity .3s;
+    }
+    #load-bar.active { opacity: 1; animation: lb 1.5s ease-in-out infinite; }
+    @keyframes lb {
+      0%   { transform: scaleX(0) translateX(0); }
+      50%  { transform: scaleX(.7) translateX(20%); }
+      100% { transform: scaleX(0) translateX(100%); }
+    }
+
+    /* Leaflet dark overrides */
+    .leaflet-popup-content-wrapper {
+      background: var(--surface) !important;
+      border: 1px solid var(--border2) !important;
+      border-radius: var(--radius) !important;
+      color: var(--text) !important;
+      box-shadow: 0 8px 32px rgba(0,0,0,.6) !important;
+    }
+    .leaflet-popup-tip { background: var(--border2) !important; }
+    .leaflet-popup-content { margin: 12px 14px !important; font-family: var(--font-body) !important; font-size: 13px !important; }
+    .popup-title { font-family: var(--font-head); font-weight: 700; margin-bottom: 8px; }
+    .popup-row { display: flex; justify-content: space-between; gap: 14px; margin-bottom: 4px; color: var(--muted); font-size: 12px; }
+    .popup-row span:last-child { color: var(--text); font-weight: 600; }
+    .popup-badge { display: inline-block; padding: 3px 10px; border-radius: 20px; font-size: 11px; font-weight: 700; margin-top: 8px; }
+
+    .leaflet-control-attribution { background: rgba(10,12,15,.8) !important; color: var(--muted) !important; font-size: 10px !important; }
+    .leaflet-control-attribution a { color: var(--accent) !important; }
+    .leaflet-control-zoom a { background: var(--surface) !important; color: var(--text) !important; border-color: var(--border2) !important; }
+
+    /* ── SCROLL FADE-IN ── */
+    .reveal {
+      opacity: 0;
+      transform: translateY(22px);
+      transition: opacity .6s ease, transform .6s ease;
+    }
+    .reveal.visible { opacity: 1; transform: none; }
+
+    /* ── SCROLL INDICATOR ── */
+    .scroll-hint {
+      display: flex; align-items: center; gap: 8px;
+      font-size: 12px; color: var(--muted);
+      margin-top: 24px; animation: bob 2s ease-in-out infinite;
+      font-weight: 400;
+    }
+    @keyframes bob { 0%, 100% { transform: translateY(0); } 50% { transform: translateY(4px); } }
+
+    /* ── DIVIDER ── */
+    .divider {
+      width: 40px; height: 3px;
+      background: linear-gradient(90deg, var(--accent), rgba(192,57,43,.2));
+      border-radius: 2px;
+      margin: 14px 0 20px;
+    }
+
+    /* Mobile */
+    @media (max-width: 900px) {
+      :root { --story-w: 100%; --map-w: 100%; }
+      #root { flex-direction: column; height: auto; overflow: visible; }
+      #story { height: auto; overflow: visible; }
+      #map-side { position: relative; height: 60vh; }
+    }
+  </style>
+</head>
+<body>
+
+<div id="root">
+
+  <!-- ════════════════════════════════
+       STORY PANEL — LEFT
+  ════════════════════════════════ -->
+  <div id="story">
+
+    <!-- ── SECTION 1: HERO ── -->
+    <section id="sec-hero">
+      <div class="hero-bg"></div>
+      <div class="hero-noise"></div>
+      <div class="hero-inner">
+        <div class="hero-badge">Studi Kasus · Kabupaten Bogor · 2026</div>
+        <h1 class="hero-title">
+          WebGIS Analisis<br/>
+          Kerawanan<br/>
+          <span class="hl">Tanah Longsor</span>
+        </h1>
+        <p class="hero-sub">
+          Pemetaan spasial berbasis multi-parameter menggunakan <strong>Weighted Overlay</strong> pada Kabupaten Bogor — sebagai instrumen komprehensif untuk mitigasi bencana.
+        </p>
+        <div class="hero-stats">
+          <div class="hstat reveal">
+            <div class="v" style="color:#DC2626">3.528</div>
+            <div class="l">Kejadian longsor nasional 2020–2024</div>
+          </div>
+          <div class="hstat reveal" style="transition-delay:.1s">
+            <div class="v" style="color:#D97706">176</div>
+            <div class="l">Kejadian di Kabupaten Bogor (2022)</div>
+          </div>
+          <div class="hstat reveal" style="transition-delay:.2s">
+            <div class="v" style="color:#2563EB">5</div>
+            <div class="l">Parameter analisis berbobot</div>
+          </div>
+        </div>
+        <div class="scroll-hint">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 5v14M5 12l7 7 7-7"/></svg>
+          Scroll untuk membaca laporan
+        </div>
+      </div>
+    </section>
+
+    <!-- ── SECTION 2: LATAR BELAKANG ── -->
+    <section class="section" id="sec-bg">
+      <div class="section-eyebrow reveal">Latar Belakang</div>
+      <h2 class="section-title reveal">Indonesia: Episentrum <em>Bencana Longsor</em></h2>
+      <div class="divider reveal"></div>
+      <div class="section-body reveal">
+        <p>Indonesia merupakan salah satu negara dengan kerentanan tertinggi terhadap bencana alam. BNPB mencatat rata-rata <strong>591–1.326 kejadian tanah longsor per tahun</strong> selama periode 2018–2023, dengan total <strong>3.528 kejadian</strong> antara tahun 2020–2024.</p>
+        <p>Pada tahun 2022, tanah longsor secara nasional menelan <strong>89 korban jiwa</strong> dan berdampak pada lebih dari <strong>51.000 orang</strong>. Pulau Jawa — khususnya Provinsi Jawa Barat — menjadi episentrum dengan frekuensi tertinggi, diperburuk oleh perubahan iklim dan konversi lahan masif.</p>
+      </div>
+
+      <div class="callout-grid reveal">
+        <div class="callout">
+          <div class="c-num" style="color:#DC2626">34</div>
+          <div class="c-lbl">Korban jiwa longsor di Kab. Bogor tahun 2022</div>
+        </div>
+        <div class="callout">
+          <div class="c-num" style="color:#D97706">56.791</div>
+          <div class="c-lbl">Jiwa terdampak di Kabupaten Bogor (2022)</div>
+        </div>
+        <div class="callout">
+          <div class="c-num" style="color:#2563EB">307</div>
+          <div class="c-lbl">Desa terdampak longsor di Kab. Bogor (2022)</div>
+        </div>
+        <div class="callout">
+          <div class="c-num" style="color:#C0392B">26/40</div>
+          <div class="c-lbl">Kecamatan kategori kerentanan sedang–tinggi (2023–2024)</div>
+        </div>
+      </div>
+
+      <div class="section-body reveal">
+        <p>Tren ini berlanjut hingga tahun 2023–2024, di mana <strong>26 dari 40 kecamatan</strong> masuk dalam kategori kerentanan longsor sedang hingga tinggi. WebGIS ini hadir sebagai instrumen komprehensif berbasis SIG untuk kebutuhan mitigasi bencana.</p>
+      </div>
+    </section>
+
+    <!-- ── SECTION 3: METODOLOGI ── -->
+    <section class="section" id="sec-method">
+      <div class="section-eyebrow reveal">Metodologi</div>
+      <h2 class="section-title reveal">Alur <em>Pengolahan Data</em></h2>
+      <div class="divider reveal"></div>
+
+      <ol class="stepper reveal">
+        <li>
+          <div class="step-num">1</div>
+          <div class="step-body">
+            <h4>Akuisisi &amp; Praproses Data</h4>
+            <p>Unduh data DEMNAS/SRTM untuk ekstraksi <strong>kemiringan lereng (slope)</strong> menggunakan fungsi Spatial Analyst pada ArcGIS Pro. Data tutupan lahan, jenis tanah, curah hujan, dan geologi dipotong (clip) sesuai batas administrasi Kabupaten Bogor.</p>
+          </div>
+        </li>
+        <li>
+          <div class="step-num">2</div>
+          <div class="step-body">
+            <h4>Klasifikasi &amp; Skoring</h4>
+            <p>Setiap parameter diklasifikasikan ke dalam beberapa kelas berdasarkan kriteria pustaka <strong>Puslittanak (2004)</strong> dan <strong>Van Zuidam (1985)</strong>. Skor tinggi menunjukkan kontribusi lebih besar terhadap potensi longsor. Seluruh data vektor hasil digitasi dikonversi ke format raster.</p>
+          </div>
+        </li>
+        <li>
+          <div class="step-num">3</div>
+          <div class="step-body">
+            <h4>Overlay &amp; Pembobotan</h4>
+            <p>Lima layer parameter digabungkan menggunakan teknik <strong>Weighted Overlay</strong> pada ArcGIS Pro:</p>
+            <div class="formula-box">
+              <code>Total Score = (0.3 × CH) + (0.2 × GL) + (0.2 × KL) + (0.2 × TL) + (0.1 × JT)</code>
+              <br/><br/>
+              CH = Curah Hujan &nbsp;|&nbsp; GL = Geologi &nbsp;|&nbsp; KL = Kemiringan Lereng<br/>
+              TL = Tutupan Lahan &nbsp;|&nbsp; JT = Jenis Tanah
+            </div>
+          </div>
+        </li>
+        <li>
+          <div class="step-num">4</div>
+          <div class="step-body">
+            <h4>Zonasi Akhir</h4>
+            <p>Hasil skor total diklasifikasikan menjadi tiga kelas tingkat kerawanan: <strong style="color:#16A34A">Rendah</strong>, <strong style="color:#D97706">Sedang</strong>, dan <strong style="color:#DC2626">Tinggi</strong>.</p>
+          </div>
+        </li>
+      </ol>
+    </section>
+
+    <!-- ── SECTION 4: PARAMETER SCORING ── -->
+    <section class="section" id="sec-param">
+      <div class="section-eyebrow reveal">Parameter Scoring</div>
+      <h2 class="section-title reveal">Bobot &amp; Klasifikasi <em>Parameter</em></h2>
+      <div class="divider reveal"></div>
+      <div class="section-body reveal">
+        <p>Pembobotan mengacu pada metode Analytical Hierarchy Process (AHP) dengan total bobot <strong>100%</strong>.</p>
+      </div>
+
+      <div class="param-wrap reveal">
+        <table class="param-tbl">
+          <thead>
+            <tr>
+              <th>Parameter</th>
+              <th>Bobot</th>
+              <th>Sub-kriteria (contoh)</th>
+              <th>Skor</th>
+              <th>Referensi</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr>
+              <td><strong>Kemiringan Lereng</strong></td>
+              <td><span class="pill pill-h">20%</span></td>
+              <td>Datar (0–2%), Landai (3–7%), Miring (8–13%), Agak curam (14–20%), Curam (21–55%), Sangat curam (56–140%), Luar biasa curam (&gt;140%)</td>
+              <td>
+                <div class="score-dots">
+                  <div class="score-dot" style="background:#4f9eff">1</div>
+                  <div class="score-dot" style="background:#38d9a9">2</div>
+                  <div class="score-dot" style="background:#a8e063">3</div>
+                  <div class="score-dot" style="background:#f5c518">4</div>
+                  <div class="score-dot" style="background:#ff8c42">5</div>
+                  <div class="score-dot" style="background:#ff5a5a">6</div>
+                  <div class="score-dot" style="background:#c0392b">7</div>
+                </div>
+              </td>
+              <td style="color:var(--muted)">Van Zuidam (1985)</td>
+            </tr>
+            <tr>
+              <td><strong>Curah Hujan</strong></td>
+              <td><span class="pill pill-h">30%</span></td>
+              <td>Sangat kering (&lt;1.500), Kering (1.501–2.000), Sedang (2.001–2.500), Basah (2.501–3.000), Sangat basah (&gt;3.000) mm/tahun</td>
+              <td>
+                <div class="score-dots">
+                  <div class="score-dot" style="background:#4f9eff">1</div>
+                  <div class="score-dot" style="background:#38d9a9">2</div>
+                  <div class="score-dot" style="background:#f5c518">3</div>
+                  <div class="score-dot" style="background:#ff8c42">4</div>
+                  <div class="score-dot" style="background:#ff5a5a">5</div>
+                </div>
+              </td>
+              <td style="color:var(--muted)">Puslittanak (2004)</td>
+            </tr>
+            <tr>
+              <td><strong>Tutupan Lahan</strong></td>
+              <td><span class="pill pill-m">20%</span></td>
+              <td>Awan / Perairan / Permukiman / Hutan &amp; Perkebunan / Semak belukar &amp; Tanah kosong / Lahan Pertanian</td>
+              <td>
+                <div class="score-dots">
+                  <div class="score-dot" style="background:#555">0</div>
+                  <div class="score-dot" style="background:#4f9eff">1</div>
+                  <div class="score-dot" style="background:#38d9a9">2</div>
+                  <div class="score-dot" style="background:#f5c518">3</div>
+                  <div class="score-dot" style="background:#ff8c42">4</div>
+                  <div class="score-dot" style="background:#ff5a5a">5</div>
+                </div>
+              </td>
+              <td style="color:var(--muted)">Puslittanak (2004)</td>
+            </tr>
+            <tr>
+              <td><strong>Geologi (Jenis Batuan)</strong></td>
+              <td><span class="pill pill-m">20%</span></td>
+              <td>Alluvial / Sedimen / Vulkanik</td>
+              <td>
+                <div class="score-dots">
+                  <div class="score-dot" style="background:#38d9a9">1</div>
+                  <div class="score-dot" style="background:#f5c518">2</div>
+                  <div class="score-dot" style="background:#ff5a5a">3</div>
+                </div>
+              </td>
+              <td style="color:var(--muted)">Puslittanak (2004)</td>
+            </tr>
+            <tr>
+              <td><strong>Jenis Tanah</strong></td>
+              <td><span class="pill pill-l">10%</span></td>
+              <td>Alluvial Yellow / Brown latosol association / Brown latosol / Andosol, Podsolik / Regosol</td>
+              <td>
+                <div class="score-dots">
+                  <div class="score-dot" style="background:#4f9eff">1</div>
+                  <div class="score-dot" style="background:#38d9a9">2</div>
+                  <div class="score-dot" style="background:#f5c518">3</div>
+                  <div class="score-dot" style="background:#ff5a5a">4</div>
+                </div>
+              </td>
+              <td style="color:var(--muted)">Puslittanak (2004)</td>
+            </tr>
+            <tr class="total-row">
+              <td colspan="2">Total Bobot</td>
+              <td colspan="3">100% — Metode AHP</td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+    </section>
+
+    <!-- ── SECTION 5: PETA INTERAKTIF ── -->
+    <section id="sec-map" class="section">
+      <div class="section-eyebrow reveal">Eksplorasi Spasial</div>
+      <h2 class="section-title reveal">Peta <em>Interaktif</em> Kerawanan</h2>
+      <div class="divider reveal"></div>
+      <div class="section-body reveal">
+        <p>Gunakan panel layer di sebelah kanan untuk menyalakan atau mematikan setiap parameter. Klik poligon untuk melihat detail data spasial.</p>
+      </div>
+
+      <div class="legend-inline reveal">
+        <div class="leg-item">
+          <div class="leg-dot" style="background:var(--c-low)"></div>
+          <span>Rendah</span>
+        </div>
+        <div class="leg-item">
+          <div class="leg-dot" style="background:var(--c-med)"></div>
+          <span>Sedang</span>
+        </div>
+        <div class="leg-item">
+          <div class="leg-dot" style="background:var(--c-high)"></div>
+          <span>Tinggi</span>
+        </div>
+      </div>
+    </section>
+
+    <!-- spacer so map stays visible a bit after last section -->
+    <div style="height:30vh; background: var(--bg);"></div>
+
+  </div><!-- /story -->
+
+
+  <!-- ════════════════════════════════
+       MAP PANEL — RIGHT (STICKY)
+  ════════════════════════════════ -->
+  <div id="map-side">
+    <div id="load-bar"></div>
+    <div id="map"></div>
+
+    <!-- overlay UI -->
+    <div id="map-ui">
+
+      <!-- Layer Control -->
+      <div id="layer-ctrl">
+        <div class="lc-head" id="lc-head" onclick="toggleLCPanel()">
+          <span>🗂 Layer Kontrol</span>
+          <span class="lc-chev open" id="lc-chev">▲</span>
+        </div>
+        <div id="lc-body"></div>
+        <div id="bm-row">
+          <span>Basemap:</span>
+          <button class="bm-btn active" onclick="setBasemap('osm',this)">OSM</button>
+          <button class="bm-btn" onclick="setBasemap('satellite',this)">Satelit</button>
+          <button class="bm-btn" onclick="setBasemap('topo',this)">Topo</button>
+        </div>
+      </div>
+
+      <!-- Coord bar -->
+      <div id="coord-bar">
+        <span id="c-lat">Lat: —</span>
+        <span>|</span>
+        <span id="c-lng">Lng: —</span>
+        <span>|</span>
+        <span id="c-zoom">Zoom: —</span>
+      </div>
+
+      <!-- Hint -->
+      <div id="map-popup-hint">💡 Klik poligon untuk detail</div>
+
+    </div>
+  </div>
+
+</div><!-- /root -->
+
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+<script>
+/* ══════════════════════════════════════════════════════
+   SYMBOLOGY
+══════════════════════════════════════════════════════ */
+const SYMBOLOGY = {
+  lulc: {
+    layerName: 'Tutupan Lahan (LULC)', accentColor: '#4CAF50',
+    classes: {
+      1: { label: 'Perairan',                    color: '#1565C0' },
+      2: { label: 'Permukiman / Terbangun',       color: '#E53935' },
+      3: { label: 'Hutan & Perkebunan',           color: '#2E7D32' },
+      4: { label: 'Semak / Tanah Kosong',         color: '#F9A825' },
+      5: { label: 'Pertanian',                    color: '#8BC34A' },
+    }
+  },
+  tanah: {
+    layerName: 'Jenis Tanah', accentColor: '#A1662F',
+    classes: {
+      3: { label: 'Brown Latosol',      color: '#A1662F' },
+      4: { label: 'Andosol, Podzolic',  color: '#5D1F00' },
+    }
+  },
+  geologi: {
+    layerName: 'Geologi / Litologi', accentColor: '#78909C',
+    classes: {
+      1: { label: 'Alluvial',  color: '#C8A96E' },
+      2: { label: 'Sediment',  color: '#FF7043' },
+      3: { label: 'Vulcanic',  color: '#546E7A' },
+    }
+  },
+  ch: {
+    layerName: 'Curah Hujan', accentColor: '#1976D2',
+    classes: {
+      4: { label: 'Basah (2301–3000 mm)',    color: '#64B5F6' },
+      5: { label: 'Sangat Basah (>3000 mm)', color: '#0D47A1' },
+    }
+  },
+  slope: {
+    layerName: 'Kemiringan Lereng', accentColor: '#FF5722',
+    classes: {
+      1: { label: 'Datar (0–2%)',             color: '#E8F5E9' },
+      2: { label: 'Landai (3–7%)',            color: '#A5D6A7' },
+      3: { label: 'Miring (8–13%)',           color: '#FFF176' },
+      4: { label: 'Agak Curam (14–20%)',      color: '#FFB74D' },
+      5: { label: 'Curam (21–55%)',           color: '#F4511E' },
+      6: { label: 'Sangat Curam (56–140%)',   color: '#B71C1C' },
+      7: { label: 'Luar Biasa Curam (>140%)', color: '#4A148C' },
+    }
+  },
+  kerawanan: {
+    layerName: 'Kerawanan Tanah Longsor', accentColor: '#ff5a5a',
+    classes: {
+      1: { label: 'Rendah',  color: '#38d9a9' },
+      2: { label: 'Sedang',  color: '#f5c518' },
+      3: { label: 'Tinggi',  color: '#ff5a5a' },
+    }
+  },
+};
+
+/* ══════════════════════════════════════════════════════
+   LAYER CONFIG
+══════════════════════════════════════════════════════ */
+const LAYER_CONFIG = [
+  { id: 'lulc',      path: 'DATA/lulc_2.geojson',     symbId: 'lulc',      opacity: 0.75, visible: false },
+  { id: 'tanah',     path: 'DATA/tanah_2.geojson',     symbId: 'tanah',     opacity: 0.75, visible: false },
+  { id: 'geologi',   path: 'DATA/geologi_2.geojson',   symbId: 'geologi',   opacity: 0.75, visible: false },
+  { id: 'ch',        path: 'DATA/ch_2.geojson',         symbId: 'ch',        opacity: 0.75, visible: false },
+  { id: 'slope',     path: 'DATA/slope_3.geojson',      symbId: 'slope',     opacity: 0.75, visible: false },
+  { id: 'kerawanan', path: 'DATA/Kerawanan_2.geojson',  symbId: 'kerawanan', opacity: 0.82, visible: true  },
+];
+
+/* ══════════════════════════════════════════════════════
+   MAP INIT
+══════════════════════════════════════════════════════ */
+const MAP_CENTER = [-6.65, 106.85];
+const MAP_ZOOM   = 10;
+
+const map = L.map('map', { center: MAP_CENTER, zoom: MAP_ZOOM, zoomControl: false });
+L.control.zoom({ position: 'bottomleft' }).addTo(map);
+
+const basemaps = {
+  osm: L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+    attribution: '© <a href="https://openstreetmap.org">OpenStreetMap</a>', maxZoom: 19
+  }),
+  satellite: L.tileLayer(
+    'https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}',
+    { attribution: 'Tiles © Esri', maxZoom: 19 }
+  ),
+  topo: L.tileLayer('https://{s}.tile.opentopomap.org/{z}/{x}/{y}.png', {
+    attribution: '© OpenTopoMap', maxZoom: 17
+  }),
+};
+basemaps.osm.addTo(map);
+let activeBasemap = 'osm';
+
+function setBasemap(key, btn) {
+  map.removeLayer(basemaps[activeBasemap]);
+  basemaps[key].addTo(map);
+  basemaps[key].bringToBack();
+  activeBasemap = key;
+  document.querySelectorAll('.bm-btn').forEach(b => b.classList.remove('active'));
+  btn.classList.add('active');
+}
+
+map.on('mousemove', e => {
+  document.getElementById('c-lat').textContent  = 'Lat: ' + e.latlng.lat.toFixed(5);
+  document.getElementById('c-lng').textContent  = 'Lng: ' + e.latlng.lng.toFixed(5);
+  document.getElementById('c-zoom').textContent = 'Zoom: ' + map.getZoom();
+});
+
+/* ══════════════════════════════════════════════════════
+   LOADING
+══════════════════════════════════════════════════════ */
+let loadCount = 0;
+function setLoading(on) {
+  loadCount += on ? 1 : -1;
+  document.getElementById('load-bar').classList.toggle('active', loadCount > 0);
+}
+
+/* ══════════════════════════════════════════════════════
+   STYLE
+══════════════════════════════════════════════════════ */
+function getStyle(symbId, opacity) {
+  return function(feature) {
+    const gc  = feature.properties.gridcode;
+    const cls = SYMBOLOGY[symbId].classes[gc];
+    return {
+      fillColor:   cls ? cls.color : '#888',
+      fillOpacity: opacity,
+      color:       '#00000022',
+      weight:      0.4,
+    };
+  };
+}
+
+/* ══════════════════════════════════════════════════════
+   POPUP
+══════════════════════════════════════════════════════ */
+function onEachFeature(symbId) {
+  return function(feature, layer) {
+    const symb = SYMBOLOGY[symbId];
+    layer.on('click', function(e) {
+      L.DomEvent.stopPropagation(e);
+      const props    = feature.properties;
+      const gridcode = props.gridcode;
+      const cls      = symb.classes[gridcode];
+      const label    = cls ? cls.label : 'Tidak diketahui';
+      const color    = cls ? cls.color : '#888';
+      const extraRows = Object.entries(props)
+        .filter(([k, v]) => k !== 'gridcode' && v !== null && v !== undefined && v !== '')
+        .map(([k, v]) => `<div class="popup-row"><span>${k}</span><span>${v}</span></div>`)
+        .join('');
+      const html = `
+        <div class="popup-title">📍 ${symb.layerName}</div>
+        <div class="popup-row"><span>Gridcode</span><span><b>${gridcode}</b></span></div>
+        ${extraRows}
+        <span class="popup-badge" style="background:${color}33;color:${color};border:1px solid ${color}66">${label}</span>`;
+      L.popup().setLatLng(e.latlng).setContent(html).openOn(map);
+    });
+    layer.on('mouseover', function() { this.setStyle({ weight: 1.8, color: '#ffffffaa' }); });
+    layer.on('mouseout',  function() { this.setStyle({ weight: 0.4, color: '#00000022' }); });
+  };
+}
+
+/* ══════════════════════════════════════════════════════
+   LOAD GEOJSON
+══════════════════════════════════════════════════════ */
+const leafletLayers = {};
+
+async function loadLayer(cfg) {
+  setLoading(true);
+  const countEl = document.getElementById(`cnt-${cfg.id}`);
+  try {
+    const res = await fetch(cfg.path);
+    if (!res.ok) throw new Error(`HTTP ${res.status}`);
+    const data = await res.json();
+    const lyr = L.geoJSON(data, {
+      style:         getStyle(cfg.symbId, cfg.opacity),
+      onEachFeature: onEachFeature(cfg.symbId),
+    });
+    leafletLayers[cfg.id] = lyr;
+    if (cfg.visible) lyr.addTo(map);
+    const count = data.features?.length ?? '?';
+    if (countEl) countEl.textContent = count + ' fitur';
+  } catch (err) {
+    console.warn(`Layer [${cfg.id}] gagal:`, err.message);
+    if (countEl) { countEl.textContent = '⚠ gagal'; countEl.style.color = '#ff5a5a'; }
+  } finally {
+    setLoading(false);
+  }
+}
+
+Promise.all(LAYER_CONFIG.map(loadLayer)).then(buildLayerList);
+
+/* ══════════════════════════════════════════════════════
+   LAYER CONTROL UI
+══════════════════════════════════════════════════════ */
+function buildLayerList() {
+  const body = document.getElementById('lc-body');
+  body.innerHTML = '';
+  [...LAYER_CONFIG].reverse().forEach(cfg => {
+    const symb = SYMBOLOGY[cfg.symbId];
+    const item = document.createElement('div');
+    item.className = 'lc-item';
+    item.innerHTML = `
+      <div class="lc-top">
+        <div class="lc-swatch" style="background:${symb.accentColor}"></div>
+        <span class="lc-label">${symb.layerName}</span>
+        <span class="lc-count" id="cnt-${cfg.id}">memuat…</span>
+        <button class="tog ${cfg.visible ? 'on' : ''}" id="tog-${cfg.id}"
+                onclick="toggleLayer('${cfg.id}',this)"></button>
+      </div>
+      <div class="opa-row" id="opa-${cfg.id}" style="display:${cfg.visible ? 'flex' : 'none'}">
+        <input type="range" min="0" max="1" step="0.05" value="${cfg.opacity}"
+               oninput="setOpacity('${cfg.id}',this.value)" />
+        <span id="opv-${cfg.id}">${Math.round(cfg.opacity*100)}%</span>
+      </div>`;
+    body.appendChild(item);
+  });
+}
+
+function toggleLayer(id, btn) {
+  const cfg = LAYER_CONFIG.find(c => c.id === id);
+  cfg.visible = !cfg.visible;
+  btn.classList.toggle('on', cfg.visible);
+  document.getElementById(`opa-${id}`).style.display = cfg.visible ? 'flex' : 'none';
+  const lyr = leafletLayers[id];
+  if (!lyr) return;
+  if (cfg.visible) lyr.addTo(map); else map.removeLayer(lyr);
+}
+
+function setOpacity(id, val) {
+  const num = parseFloat(val);
+  const cfg = LAYER_CONFIG.find(c => c.id === id);
+  cfg.opacity = num;
+  document.getElementById(`opv-${id}`).textContent = Math.round(num*100) + '%';
+  const lyr = leafletLayers[id];
+  if (lyr) lyr.setStyle(getStyle(cfg.symbId, num));
+}
+
+function toggleLCPanel() {
+  const body = document.getElementById('lc-body');
+  const bm   = document.getElementById('bm-row');
+  const chev = document.getElementById('lc-chev');
+  const isOpen = chev.classList.toggle('open');
+  body.style.display = bm.style.display = isOpen ? '' : 'none';
+}
+
+/* ══════════════════════════════════════════════════════
+   SCROLL REVEAL
+══════════════════════════════════════════════════════ */
+const observer = new IntersectionObserver((entries) => {
+  entries.forEach(e => {
+    if (e.isIntersecting) {
+      e.target.classList.add('visible');
+      observer.unobserve(e.target);
+    }
+  });
+}, { threshold: 0.1, rootMargin: '0px 0px -40px 0px' });
+
+document.querySelectorAll('.reveal').forEach(el => observer.observe(el));
+</script>
+</body>
+</html>
